@@ -5,7 +5,10 @@ const { query, tx } = require('../db');
 const { h, bad, notFound, forbidden } = require('../utils/errors');
 const { requireRole } = require('../middleware/auth');
 const { log } = require('../services/journal');
+const { notifyRole, safe } = require('../services/notifications');
 const { lock, LOCK_SALLE, assertRoomFree, roomConflicts } = require('../services/conflicts');
+
+const fmtDate = (d) => new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
 
 const router = express.Router();
 
@@ -62,6 +65,9 @@ router.post('/reservations', requireRole('enseignant'), h(async (req, res) => {
       [salleId, req.user.id, debut, fin, motif])).rows[0];
   });
   await log(req, 'reservation.create', 'reservations', { id: resa.id, salleId });
+  const salle = (await query('SELECT nom FROM salles WHERE id = $1', [salleId])).rows[0];
+  await safe(notifyRole('admin',
+    `Nouvelle réservation : ${salle.nom} le ${fmtDate(debut)} par ${req.user.nom} ${req.user.prenom}`));
   res.status(201).json(resa);
 }));
 

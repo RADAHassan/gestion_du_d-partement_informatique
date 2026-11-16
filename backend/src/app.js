@@ -36,6 +36,7 @@ app.use('/api', etudiant.files);
 app.use('/api', require('./routes/salles'));
 app.use('/api', require('./routes/seances'));
 app.use('/api', require('./routes/materiel'));
+app.use('/api', require('./routes/transversal'));
 
 app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Route introuvable')));
 

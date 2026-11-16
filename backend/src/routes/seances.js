@@ -1,15 +1,17 @@
 /** Emplois du temps, annulation de séances et pointage (côté enseignant). */
 const express = require('express');
 const v = require('../utils/validate');
-const config = require('../config');
 const { query, tx } = require('../db');
 const { h, bad, notFound, conflict, forbidden } = require('../utils/errors');
 const { requireRole } = require('../middleware/auth');
 const { log } = require('../services/journal');
 const { closePointage, closeExpired } = require('../services/pointage');
 const { generateCode } = require('../services/rules');
+const { getInt } = require('../services/parametres');
+const { notifyGroupe, notifyRole, safe } = require('../services/notifications');
 
 const router = express.Router();
+const fmtDate = (d) => new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
 
 /** Emploi du temps selon le rôle : admin = tout, enseignant = ses séances, étudiant = celles de son groupe. */
 router.get('/seances/mes', h(async (req, res) => {
@@ -59,6 +61,7 @@ router.post('/seances/:id/annuler', requireRole('admin', 'enseignant'), h(async 
     return (await c.query("UPDATE seances SET statut = 'annulee' WHERE id = $1 RETURNING *", [id])).rows[0];
   });
   await log(req, 'seance.annuler', 'seances', { id, salle_id: out.salle_id });
+  await safe(notifyGroupe(out.groupe_id, `Séance annulée : ${out.module} du ${fmtDate(out.debut)}`));
   res.json(out);
 }));
 
@@ -67,7 +70,8 @@ const ens = requireRole('enseignant');
 
 router.post('/seances/:id/pointage/ouvrir', ens, h(async (req, res) => {
   const id = v.int(req.params.id, 'id');
-  const minutes = v.int((req.body || {}).duree_minutes ?? config.pointageDefaultMinutes, 'duree_minutes', { min: 1, max: 60 });
+  // durée par défaut : paramètre modifiable par le chef de département (EF-45)
+  const minutes = v.int((req.body || {}).duree_minutes ?? await getInt('pointage_minutes'), 'duree_minutes', { min: 1, max: 60 });
   await closeExpired();
   const out = await tx(async (c) => {
     const s = await ownSeance(c, id, req.user, { forUpdate: true });
@@ -129,7 +133,7 @@ router.get('/seances/:id/pointage', ens, h(async (req, res) => {
 router.put('/seances/:id/presences/:etudiantId', ens, h(async (req, res) => {
   const id = v.int(req.params.id, 'id');
   const etudiantId = v.int(req.params.etudiantId, 'etudiantId');
-  const statut = v.oneOf((req.body || {}).statut, 'statut', ['present', 'absent']);
+  const statut = v.oneOf((req.body || {}).statut, 'statut', ['present', 'retard', 'absent']);
   await tx(async (c) => {
     const s = await ownSeance(c, id, req.user, { forUpdate: true });
     if (s.presence_validee) throw conflict('Feuille déjà validée et transmise');
@@ -138,7 +142,7 @@ router.put('/seances/:id/presences/:etudiantId', ens, h(async (req, res) => {
     if (!etu.rowCount) throw bad("Cet étudiant n'appartient pas au groupe de la séance");
     await c.query(
       `INSERT INTO presences (seance_id, etudiant_id, statut, source, pointe_le)
-       VALUES ($1, $2, $3::text, 'manuel', CASE WHEN $3::text = 'present' THEN now() END)
+       VALUES ($1, $2, $3::text, 'manuel', CASE WHEN $3::text IN ('present', 'retard') THEN now() END)
        ON CONFLICT (seance_id, etudiant_id) DO UPDATE
          SET statut = EXCLUDED.statut, source = 'manuel', pointe_le = EXCLUDED.pointe_le`, [id, etudiantId, statut]);
   });
@@ -159,7 +163,10 @@ router.post('/seances/:id/valider', ens, h(async (req, res) => {
       "UPDATE seances SET presence_validee = TRUE, transmise_le = now(), statut = 'terminee' WHERE id = $1", [id]);
   });
   await log(req, 'presence.valider', 'seances', { id });
-  res.json(await feuille(id));
+  const out = await feuille(id);
+  await safe(notifyRole('admin',
+    `Feuille de présence transmise : ${out.seance.module} (${out.seance.groupe}) par ${req.user.nom} ${req.user.prenom}`));
+  res.json(out);
 }));
 
 module.exports = router;

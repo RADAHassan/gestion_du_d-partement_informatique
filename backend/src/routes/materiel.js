@@ -5,6 +5,7 @@ const { query, tx } = require('../db');
 const { h, bad, notFound, conflict, forbidden } = require('../utils/errors');
 const { requireRole } = require('../middleware/auth');
 const { log } = require('../services/journal');
+const { notifyRole, safe } = require('../services/notifications');
 const { lock, LOCK_EQUIP, availableQty } = require('../services/conflicts');
 
 const router = express.Router();
@@ -55,6 +56,9 @@ router.post('/materiel/demandes', requireRole('enseignant'), h(async (req, res) 
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [equipementId, req.user.id, quantite, debut, fin, motif])).rows[0];
   });
   await log(req, 'demande.create', 'demandes_materiel', { id: demande.id });
+  const eq = (await query('SELECT nom FROM equipements WHERE id = $1', [equipementId])).rows[0];
+  await safe(notifyRole('admin',
+    `Nouvelle demande de matériel : ${eq.nom} ×${quantite} par ${req.user.nom} ${req.user.prenom}`));
   res.status(201).json(demande);
 }));
 

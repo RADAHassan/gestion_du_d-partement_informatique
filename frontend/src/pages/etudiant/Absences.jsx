@@ -10,8 +10,9 @@ export default function Absences() {
   return (
     <>
       <PageTitle>Mes absences</PageTitle>
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Présences" value={count('present')} />
+        <Stat label="Retards" value={count('retard')} tone={count('retard') ? 'amber' : 'brand'} />
         <Stat label="Absences" value={count('absent')} tone={count('absent') ? 'red' : 'brand'} />
         <Stat label="Justifiées" value={count('absent_justifie')} />
       </div>

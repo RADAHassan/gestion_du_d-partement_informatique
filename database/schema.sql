@@ -128,6 +128,7 @@ CREATE TABLE demandes_materiel (
                  CHECK (statut IN ('en_attente', 'validee', 'refusee', 'annulee', 'retournee')),
   traite_par     INT REFERENCES users(id),
   traite_le      TIMESTAMPTZ,
+  retard_notifie BOOLEAN NOT NULL DEFAULT FALSE,   -- alerte "retard de retour" déjà émise
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT demandes_periode CHECK (fin >= debut)
 );
@@ -174,7 +175,7 @@ CREATE TABLE presences (
   id           SERIAL PRIMARY KEY,
   seance_id    INT NOT NULL REFERENCES seances(id) ON DELETE CASCADE,
   etudiant_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  statut       VARCHAR(20) NOT NULL CHECK (statut IN ('present', 'absent', 'absent_justifie')),
+  statut       VARCHAR(20) NOT NULL CHECK (statut IN ('present', 'retard', 'absent', 'absent_justifie')),
   source       VARCHAR(10) NOT NULL DEFAULT 'etudiant' CHECK (source IN ('etudiant', 'auto', 'manuel')),
   pointe_le    TIMESTAMPTZ,
   UNIQUE (seance_id, etudiant_id)
@@ -196,6 +197,42 @@ CREATE TABLE justificatifs (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX justificatifs_statut_idx ON justificatifs (statut);
+
+-- ---------------------------------------------------------------------
+-- Notifications, pannes, paramètres (conception : notification, parametre, UC15)
+-- ---------------------------------------------------------------------
+CREATE TABLE notifications (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message     VARCHAR(500) NOT NULL,
+  lu          BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX notifications_user_idx ON notifications (user_id, lu, created_at DESC);
+
+CREATE TABLE pannes (
+  id             SERIAL PRIMARY KEY,
+  equipement_id  INT REFERENCES equipements(id) ON DELETE CASCADE,
+  salle_id       INT REFERENCES salles(id) ON DELETE CASCADE,
+  signale_par    INT REFERENCES users(id) ON DELETE SET NULL,
+  description    VARCHAR(500) NOT NULL,
+  statut         VARCHAR(10) NOT NULL DEFAULT 'ouverte' CHECK (statut IN ('ouverte', 'resolue')),
+  resolue_par    INT REFERENCES users(id) ON DELETE SET NULL,
+  resolue_le     TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT pannes_cible CHECK (equipement_id IS NOT NULL OR salle_id IS NOT NULL)
+);
+CREATE INDEX pannes_statut_idx ON pannes (statut, created_at DESC);
+
+CREATE TABLE parametres (
+  cle          VARCHAR(60) PRIMARY KEY,
+  valeur       VARCHAR(100) NOT NULL,
+  description  VARCHAR(255) NOT NULL DEFAULT ''
+);
+INSERT INTO parametres (cle, valeur, description) VALUES
+  ('pointage_minutes', '15', 'Durée de validité du code de pointage (minutes)'),
+  ('retard_minutes',   '5',  'Au-delà de ce délai après l''ouverture, un pointage est marqué « en retard » (minutes)'),
+  ('seuil_absences',   '3',  'Nombre d''absences non justifiées déclenchant une alerte au chef de département');
 
 -- ---------------------------------------------------------------------
 -- Journal d'activité

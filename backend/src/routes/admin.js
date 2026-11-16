@@ -12,6 +12,7 @@ const { crud } = require('./crud');
 const { log } = require('../services/journal');
 const { lock, LOCK_SALLE, LOCK_EQUIP, assertRoomFree, availableQty } = require('../services/conflicts');
 const { applyMovement, syncAlert } = require('../services/stock');
+const { notify } = require('../services/notifications');
 
 const router = express.Router();
 
@@ -210,9 +211,11 @@ router.post('/demandes/:id/valider', h(async (req, res) => {
     } else {
       await applyMovement(c, { equipementId: eq.id, type: 'sortie', quantite: d.quantite, motif: `Demande #${d.id}`, userId: req.user.id });
     }
-    return (await c.query(
+    const row = (await c.query(
       "UPDATE demandes_materiel SET statut = 'validee', traite_par = $2, traite_le = now() WHERE id = $1 RETURNING *",
       [id, req.user.id])).rows[0];
+    await notify([d.enseignant_id], `Votre demande de matériel #${id} (${eq.nom} ×${d.quantite}) a été validée`, c);
+    return row;
   });
   await log(req, 'demande.valider', 'demandes_materiel', { id });
   res.json(out);
@@ -221,10 +224,13 @@ router.post('/demandes/:id/valider', h(async (req, res) => {
 router.post('/demandes/:id/refuser', h(async (req, res) => {
   const id = v.int(req.params.id, 'id');
   const out = await tx(async (c) => {
-    await loadDemande(c, id, ['en_attente']);
-    return (await c.query(
+    const d = await loadDemande(c, id, ['en_attente']);
+    const row = (await c.query(
       "UPDATE demandes_materiel SET statut = 'refusee', traite_par = $2, traite_le = now() WHERE id = $1 RETURNING *",
       [id, req.user.id])).rows[0];
+    const eq = (await c.query('SELECT nom FROM equipements WHERE id = $1', [d.equipement_id])).rows[0];
+    await notify([d.enseignant_id], `Votre demande de matériel #${id} (${eq.nom} ×${d.quantite}) a été refusée`, c);
+    return row;
   });
   await log(req, 'demande.refuser', 'demandes_materiel', { id });
   res.json(out);
@@ -264,6 +270,9 @@ async function traiterJustificatif(req, res, valide) {
       `UPDATE justificatifs SET statut = $2, commentaire = $3, traite_par = $4, traite_le = now()
         WHERE id = $1 RETURNING *`, [id, valide ? 'valide' : 'refuse', commentaire, req.user.id])).rows[0];
     if (valide) await c.query("UPDATE presences SET statut = 'absent_justifie' WHERE id = $1 AND statut = 'absent'", [j.presence_id]);
+    await notify([j.etudiant_id], valide
+      ? 'Votre justificatif d\'absence a été accepté'
+      : `Votre justificatif d'absence a été refusé${commentaire ? ` : ${commentaire}` : ''}`, c);
     return j;
   });
   await log(req, valide ? 'justificatif.valider' : 'justificatif.refuser', 'justificatifs', { id });
@@ -276,6 +285,7 @@ router.get('/feuilles', h(async (_req, res) => {
   const { rows } = await query(
     `SELECT s.id, s.module, s.debut, s.transmise_le, u.nom || ' ' || u.prenom AS enseignant, g.nom AS groupe,
             count(*) FILTER (WHERE p.statut = 'present')::int AS presents,
+            count(*) FILTER (WHERE p.statut = 'retard')::int AS retards,
             count(*) FILTER (WHERE p.statut = 'absent')::int AS absents,
             count(*) FILTER (WHERE p.statut = 'absent_justifie')::int AS justifies
        FROM seances s JOIN users u ON u.id = s.enseignant_id JOIN groupes g ON g.id = s.groupe_id
@@ -297,6 +307,7 @@ router.get('/stats', h(async (_req, res) => {
     one("SELECT count(*)::int AS n FROM justificatifs WHERE statut = 'en_attente'"),
     one('SELECT count(*)::int AS n FROM alertes_stock WHERE NOT resolue'),
     one(`SELECT count(*)::int AS total, count(*) FILTER (WHERE statut = 'present')::int AS presents,
+                count(*) FILTER (WHERE statut = 'retard')::int AS retards,
                 count(*) FILTER (WHERE statut = 'absent')::int AS absents,
                 count(*) FILTER (WHERE statut = 'absent_justifie')::int AS justifies FROM presences`),
     one(`SELECT u.nom || ' ' || u.prenom AS etudiant, count(*)::int AS absences

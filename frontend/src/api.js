@@ -34,8 +34,8 @@ export async function api(path, { method = 'GET', body, params, blob } = {}) {
 }
 
 /** Télécharge un fichier protégé (en-tête Authorization requis, donc pas de simple lien). */
-export async function download(path, filename) {
-  const blob = await api(path, { blob: true });
+export async function download(path, filename, params) {
+  const blob = await api(path, { blob: true, params });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;

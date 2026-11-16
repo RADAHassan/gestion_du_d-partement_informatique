@@ -58,6 +58,14 @@ function PointagePanel({ seance, onClose }) {
   const { data: f, reload } = useLoad(() => api(`/seances/${seance.id}/pointage`), [seance.id]);
   const [minutes, setMinutes] = useState(15);
   const open = f?.pointage?.statut === 'ouvert';
+
+  // durée par défaut = paramètre réglé par le chef de département
+  useEffect(() => {
+    api('/parametres').then((ps) => {
+      const p = ps.find((x) => x.cle === 'pointage_minutes');
+      if (p) setMinutes(Number(p.valeur));
+    }).catch(() => {});
+  }, []);
   const validated = f?.seance?.presence_validee;
 
   // actualisation en direct des présences tant que le pointage est ouvert
@@ -103,6 +111,7 @@ function PointagePanel({ seance, onClose }) {
 
           <div className="mb-2 flex flex-wrap gap-2 text-sm">
             <Badge status="present">{counts.present || 0} présent(s)</Badge>
+            <Badge status="retard">{counts.retard || 0} en retard</Badge>
             <Badge status="absent">{counts.absent || 0} absent(s)</Badge>
             {open && <Badge status="en_attente">{counts.attente || 0} en attente</Badge>}
           </div>
@@ -114,6 +123,7 @@ function PointagePanel({ seance, onClose }) {
             { label: 'Correction', render: (e) => !validated && (
               <div className="flex gap-1">
                 <button className="btn-secondary btn-sm" disabled={e.statut === 'present'} onClick={() => correct(e, 'present')}>Présent</button>
+                <button className="btn-secondary btn-sm" disabled={e.statut === 'retard'} onClick={() => correct(e, 'retard')}>Retard</button>
                 <button className="btn-secondary btn-sm" disabled={e.statut === 'absent'} onClick={() => correct(e, 'absent')}>Absent</button>
               </div>) }]} />
 

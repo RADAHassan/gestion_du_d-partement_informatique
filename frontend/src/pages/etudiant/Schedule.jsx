@@ -15,7 +15,8 @@ export default function Schedule() {
     e.preventDefault(); setError(''); setBusy(true);
     try {
       const r = await api('/etudiant/pointage', { method: 'POST', body: { code: code.trim() } });
-      toast(r.deja_pointe ? `Déjà pointé : ${r.module}` : `Présence enregistrée : ${r.module}`);
+      toast(r.deja_pointe ? `Déjà pointé : ${r.module}`
+        : r.statut === 'retard' ? `Présence enregistrée en retard : ${r.module}` : `Présence enregistrée : ${r.module}`);
       setCode(''); reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   };

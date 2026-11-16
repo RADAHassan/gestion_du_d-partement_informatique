@@ -117,5 +117,9 @@ SELECT s.id, u.id,
 FROM seances s JOIN users u ON u.groupe_id = s.groupe_id AND u.role = 'etudiant'
 WHERE s.module = 'Algorithmique (hier)';
 
+-- Notifications initiales : l'alerte de stock est signalée au chef de département
+INSERT INTO notifications (user_id, message)
+SELECT u.id, a.message FROM alertes_stock a CROSS JOIN users u WHERE u.role = 'admin' AND NOT a.resolue;
+
 INSERT INTO journal (user_id, action, entite, details)
 VALUES ((SELECT id FROM users WHERE role = 'admin'), 'seed.init', 'systeme', '{"info":"Jeu de données de test chargé"}');

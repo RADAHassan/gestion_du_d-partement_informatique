@@ -1,5 +1,6 @@
 const { conflict, notFound } = require('../utils/errors');
 const { isBelowThreshold } = require('./rules');
+const { notifyRole } = require('./notifications');
 
 /**
  * Applique un mouvement de stock (entrée / sortie) de façon atomique, enregistre l'historique
@@ -30,8 +31,10 @@ async function syncAlert(client, eq) {
        VALUES ($1,$2,$3,$4)
        ON CONFLICT (equipement_id) WHERE NOT resolue
        DO UPDATE SET quantite = EXCLUDED.quantite, message = EXCLUDED.message
-       RETURNING *`,
+       RETURNING *, (xmax = 0) AS nouvelle`,
       [eq.id, eq.quantite, eq.seuil_min, msg]);
+    // une seule notification au chef de département par alerte (pas à chaque mouvement)
+    if (rows[0].nouvelle) await notifyRole('admin', msg, client);
     return rows[0];
   }
   await client.query(

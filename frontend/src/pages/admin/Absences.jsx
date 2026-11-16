@@ -37,6 +37,7 @@ export default function Absences() {
           { label: 'Séance', key: 'module' }, { label: 'Groupe', key: 'groupe' }, { label: 'Enseignant', key: 'enseignant' },
           { label: 'Date', render: (f) => fmt(f.debut) },
           { label: 'Présents', render: (f) => <Badge status="present">{f.presents}</Badge> },
+          { label: 'Retards', render: (f) => <Badge status="retard">{f.retards}</Badge> },
           { label: 'Absents', render: (f) => <Badge status="absent">{f.absents}</Badge> },
           { label: 'Justifiés', render: (f) => <Badge status="absent_justifie">{f.justifies}</Badge> },
           { label: 'Transmise le', render: (f) => fmt(f.transmise_le) }]} />

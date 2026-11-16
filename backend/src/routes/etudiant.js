@@ -12,6 +12,8 @@ const { h, bad, notFound, conflict, forbidden, HttpError } = require('../utils/e
 const { requireRole } = require('../middleware/auth');
 const { log } = require('../services/journal');
 const { closeExpired } = require('../services/pointage');
+const { getInt } = require('../services/parametres');
+const { notifyRole, safe } = require('../services/notifications');
 
 const student = express.Router();   // monté avec requireRole('etudiant')
 const files = express.Router();     // téléchargement : étudiant propriétaire ou admin
@@ -25,22 +27,31 @@ const pointageLimiter = rateLimit({
 student.post('/pointage', pointageLimiter, h(async (req, res) => {
   const code = v.str((req.body || {}).code, 'code', { max: 10 }).toUpperCase();
   await closeExpired(); // un code expiré ne doit jamais être accepté
+  const retardMinutes = await getInt('retard_minutes');
   const out = await tx(async (c) => {
+    // « en retard » = pointage plus de `retard_minutes` après l'ouverture du pointage (paramètre du chef)
     const { rows } = await c.query(
-      `SELECT p.seance_id, s.module, s.debut FROM pointages p JOIN seances s ON s.id = p.seance_id
+      `SELECT p.seance_id, s.module, s.debut,
+              (now() > p.ouvert_le + make_interval(mins => $3)) AS en_retard
+         FROM pointages p JOIN seances s ON s.id = p.seance_id
         WHERE p.code = $1 AND p.statut = 'ouvert' AND p.expire_le > now()
-          AND s.groupe_id = $2 AND s.statut = 'planifiee' FOR UPDATE OF p`, [code, req.user.groupe_id]);
+          AND s.groupe_id = $2 AND s.statut = 'planifiee' FOR UPDATE OF p`, [code, req.user.groupe_id, retardMinutes]);
     if (!rows[0]) throw notFound('Code invalide, expiré ou non destiné à votre groupe');
+    const statut = rows[0].en_retard ? 'retard' : 'present';
     const r = await c.query(
       `INSERT INTO presences (seance_id, etudiant_id, statut, source, pointe_le)
-       VALUES ($1, $2, 'present', 'etudiant', now())
+       VALUES ($1, $2, $3, 'etudiant', now())
        ON CONFLICT (seance_id, etudiant_id) DO UPDATE
-         SET statut = 'present', source = 'etudiant', pointe_le = now() WHERE presences.statut = 'absent'
-       RETURNING id`, [rows[0].seance_id, req.user.id]);
-    return { module: rows[0].module, debut: rows[0].debut, deja_pointe: r.rowCount === 0 };
+         SET statut = EXCLUDED.statut, source = 'etudiant', pointe_le = now() WHERE presences.statut = 'absent'
+       RETURNING id`, [rows[0].seance_id, req.user.id, statut]);
+    const deja = r.rowCount === 0;
+    const final = deja
+      ? (await c.query('SELECT statut FROM presences WHERE seance_id = $1 AND etudiant_id = $2', [rows[0].seance_id, req.user.id])).rows[0].statut
+      : statut;
+    return { statut: final, module: rows[0].module, debut: rows[0].debut, deja_pointe: deja };
   });
-  await log(req, 'pointage.etudiant', 'presences', { module: out.module });
-  res.status(out.deja_pointe ? 200 : 201).json({ statut: 'present', ...out });
+  await log(req, 'pointage.etudiant', 'presences', { module: out.module, statut: out.statut });
+  res.status(out.deja_pointe ? 200 : 201).json(out);
 }));
 
 // ----------------------------------------------------------------- Absences
@@ -103,6 +114,7 @@ student.post('/absences/:presenceId/justificatif', upload.single('fichier'), h(a
           file.mimetype, motif])).rows[0];
     });
     await log(req, 'justificatif.depot', 'justificatifs', { id: row.id });
+    await safe(notifyRole('admin', `Nouveau justificatif d'absence déposé par ${req.user.nom} ${req.user.prenom}`));
     res.status(201).json(row);
   } catch (e) {
     await discard();

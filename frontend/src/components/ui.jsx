@@ -70,12 +70,13 @@ const COLORS = {
 const STATUS_COLOR = {
   present: 'green', valide: 'green', validee: 'green', active: 'green', ouvert: 'green', planifiee: 'blue', libre: 'green',
   absent: 'red', refuse: 'red', refusee: 'red', annulee: 'gray', cloture: 'gray', terminee: 'gray', retournee: 'gray', occupee: 'red',
-  en_attente: 'amber', absent_justifie: 'blue',
+  en_attente: 'amber', absent_justifie: 'blue', retard: 'amber', ouverte: 'red', resolue: 'green',
 };
 const STATUS_LABEL = {
   present: 'Présent', absent: 'Absent', absent_justifie: 'Absence justifiée', en_attente: 'En attente', valide: 'Validé',
   validee: 'Validée', refuse: 'Refusé', refusee: 'Refusée', annulee: 'Annulée', planifiee: 'Planifiée', terminee: 'Terminée',
   retournee: 'Retournée', ouvert: 'Ouvert', cloture: 'Clôturé', active: 'Active', libre: 'Libre', occupee: 'Occupée',
+  retard: 'En retard', ouverte: 'Ouverte', resolue: 'Résolue',
 };
 export const Badge = ({ status, children, color }) => (
   <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${COLORS[color || STATUS_COLOR[status] || 'gray']}`}>
