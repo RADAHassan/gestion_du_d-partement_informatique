@@ -1,0 +1,6 @@
+# Sauvegarde quotidienne à 02:00 (installer avec : crontab -e)
+# Adaptez /opt/dept-info au chemin du dépôt sur le serveur.
+0 2 * * *  cd /opt/dept-info && /usr/bin/env bash scripts/backup_db.sh >> /var/log/dept-info-backup.log 2>&1
+
+# Variante : toutes les 6 heures
+# 0 */6 * * *  cd /opt/dept-info && /usr/bin/env bash scripts/backup_db.sh >> /var/log/dept-info-backup.log 2>&1

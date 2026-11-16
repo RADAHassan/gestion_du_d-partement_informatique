@@ -1,0 +1,59 @@
+name: dept-info
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dept_info}
+      POSTGRES_USER: ${POSTGRES_USER:-dept_admin}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant, copiez .env.example en .env}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Exécutés une seule fois, à la première création du volume (ordre alphabétique).
+      # Retirez le seed pour une base de production vierge.
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    networks: [backend-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-dept_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dept_info}
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET manquant, 32 caracteres minimum}"
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      POINTAGE_MINUTES: ${POINTAGE_MINUTES:-15}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads:/data/uploads
+    networks: [backend-net, frontend-net]   # non publié sur l'hôte : accessible uniquement via nginx
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    networks: [frontend-net]
+
+networks:
+  backend-net:    # db <-> backend (la base n'est jamais exposée au frontend)
+  frontend-net:   # backend <-> frontend
+
+volumes:
+  pgdata:
+  uploads:

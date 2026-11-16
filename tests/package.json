@@ -1,0 +1,19 @@
+{
+  "name": "fst-dept-info-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tests unitaires, intégration et sécurité - Gestion du département informatique",
+  "scripts": {
+    "test": "jest --runInBand --forceExit",
+    "test:unit": "jest --runInBand --forceExit unit",
+    "test:integration": "jest --runInBand --forceExit integration",
+    "test:security": "jest --runInBand --forceExit security",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "jsonwebtoken": "^9.0.2",
+    "supertest": "^7.0.0"
+  }
+}
